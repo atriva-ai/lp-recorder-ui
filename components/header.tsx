@@ -5,9 +5,13 @@ import { Camera } from "lucide-react"
 import { ThemeToggle } from "./theme-toggle"
 
 export function Header() {
-  const [currentTime, setCurrentTime] = useState(new Date())
+  const [currentTime, setCurrentTime] = useState<Date | null>(null)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    setMounted(true)
+    setCurrentTime(new Date())
+    
     const timer = setInterval(() => {
       setCurrentTime(new Date())
     }, 1000)
@@ -41,7 +45,9 @@ export function Header() {
 
         <div className="flex items-center space-x-4">
           <div className="text-right">
-            <div className="text-sm font-mono text-blue-500">{formatDateTime(currentTime)}</div>
+            <div className="text-sm font-mono text-blue-500">
+              {mounted && currentTime ? formatDateTime(currentTime) : "Loading..."}
+            </div>
           </div>
           <ThemeToggle />
         </div>

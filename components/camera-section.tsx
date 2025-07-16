@@ -1,13 +1,13 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import React, { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Plus, Edit, Trash2, Wifi, WifiOff } from "lucide-react"
 import { CameraDialog } from "./camera-dialog"
 import { Badge } from "@/components/ui/badge"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || ""
+const API_BASE: string = typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : "" // fallback to relative path
 
 interface Camera {
   id: number
@@ -18,18 +18,27 @@ interface Camera {
   video_info?: any
 }
 
+interface CameraWithStatus extends Camera {
+  snapshotUrl?: string
+  status: "live" | "no-signal" | "error"
+}
+
 export function CameraSection() {
-  const [cameras, setCameras] = useState<Camera[]>([])
+  const [cameras, setCameras] = useState<CameraWithStatus[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingCamera, setEditingCamera] = useState<Camera | null>(null)
 
+  console.log("process.env:", typeof process !== 'undefined' ? process.env : 'process.env not available');
+  console.log("API_BASE:", API_BASE);
+
   // Fetch cameras from backend
   useEffect(() => {
     setLoading(true)
     setError(null)
-    fetch(`${API_BASE}/api/v1/cameras`)
+    console.log("Fetching cameras from:", `${API_BASE}/api/v1/cameras/`);
+    fetch(`${API_BASE}/api/v1/cameras/`)
       .then(async (res) => {
         if (!res.ok) {
           const text = await res.text()
@@ -38,11 +47,77 @@ export function CameraSection() {
         return res.json()
       })
       .then((data) => {
-        setCameras(Array.isArray(data) ? data : [])
+        // Initialize status and snapshotUrl for each camera
+        setCameras(
+          (Array.isArray(data) ? data : []).map((cam: Camera) => ({
+            ...cam,
+            snapshotUrl: undefined,
+            status: "no-signal",
+          }))
+        )
       })
       .catch((e) => setError("Failed to load cameras: " + (e?.message || e)))
       .finally(() => setLoading(false))
   }, [])
+
+  // Periodically fetch snapshot and status for each camera
+  useEffect(() => {
+    const interval = setInterval(() => {
+      cameras.forEach((camera: CameraWithStatus) => {
+        // Fetch decode status
+        console.debug("Decode status API URL:", `${API_BASE}/api/v1/cameras/${camera.id}/decode-status/`)
+        fetch(`${API_BASE}/api/v1/cameras/${camera.id}/decode-status/`)
+          .then((res) => res.json())
+          .then((statusData) => {
+            let status: CameraWithStatus["status"] = "no-signal"
+            if (statusData.status === "running" && statusData.frame_count > 0) {
+              status = "live"
+            } else if (statusData.status === "error") {
+              status = "error"
+            }
+            setCameras((prev: CameraWithStatus[]) =>
+              prev.map((c: CameraWithStatus) =>
+                c.id === camera.id ? { ...c, status } : c
+              )
+            )
+          })
+          .catch(() => {
+            setCameras((prev: CameraWithStatus[]) =>
+              prev.map((c: CameraWithStatus) =>
+                c.id === camera.id ? { ...c, status: "error" } : c
+              )
+            )
+          })
+        // Fetch latest snapshot
+        const snapshotUrl = `${API_BASE}/api/v1/cameras/${camera.id}/latest-frame/?_ts=${Date.now()}`
+        console.debug("Snapshot API URL:", snapshotUrl)
+        fetch(snapshotUrl)
+          .then((res) => {
+            if (res.ok) {
+              setCameras((prev: CameraWithStatus[]) =>
+                prev.map((c: CameraWithStatus) =>
+                  c.id === camera.id ? { ...c, snapshotUrl } : c
+                )
+              )
+            } else {
+              setCameras((prev: CameraWithStatus[]) =>
+                prev.map((c: CameraWithStatus) =>
+                  c.id === camera.id ? { ...c, snapshotUrl: undefined } : c
+                )
+              )
+            }
+          })
+          .catch(() => {
+            setCameras((prev: CameraWithStatus[]) =>
+              prev.map((c: CameraWithStatus) =>
+                c.id === camera.id ? { ...c, snapshotUrl: undefined } : c
+              )
+            )
+          })
+      })
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [cameras])
 
   const handleAddCamera = () => {
     setEditingCamera(null)
@@ -60,7 +135,8 @@ export function CameraSection() {
     try {
       if (editingCamera) {
         // Update
-        const res = await fetch(`${API_BASE}/api/v1/cameras/${editingCamera.id}`, {
+        console.log("Update camera API URL:", `${API_BASE}/api/v1/cameras/${editingCamera.id}/`);
+        const res = await fetch(`${API_BASE}/api/v1/cameras/${editingCamera.id}/`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(cameraData),
@@ -68,7 +144,8 @@ export function CameraSection() {
         if (!res.ok) throw new Error("Failed to update camera")
       } else {
         // Create
-        const res = await fetch(`${API_BASE}/api/v1/cameras`, {
+        console.log("Create camera API URL:", `${API_BASE}/api/v1/cameras/`);
+        const res = await fetch(`${API_BASE}/api/v1/cameras/`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(cameraData),
@@ -76,7 +153,8 @@ export function CameraSection() {
         if (!res.ok) throw new Error("Failed to create camera")
       }
       // Refresh list
-      const updated = await fetch(`${API_BASE}/api/v1/cameras`).then((r) => r.json())
+      console.log("Refresh cameras API URL:", `${API_BASE}/api/v1/cameras/`);
+      const updated = await fetch(`${API_BASE}/api/v1/cameras/`).then((r) => r.json())
       setCameras(Array.isArray(updated) ? updated : [])
     } catch (e) {
       setError((e as Error).message)
@@ -89,7 +167,8 @@ export function CameraSection() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`${API_BASE}/api/v1/cameras/${id}`, { method: "DELETE" })
+      console.log("Delete camera API URL:", `${API_BASE}/api/v1/cameras/${id}/`);
+      const res = await fetch(`${API_BASE}/api/v1/cameras/${id}/`, { method: "DELETE" })
       if (!res.ok) throw new Error("Failed to delete camera")
       setCameras((prev) => prev.filter((c) => c.id !== id))
     } catch (e) {
@@ -133,21 +212,27 @@ export function CameraSection() {
                       RTSP
                     </Badge>
                   )}
-                  {camera.is_active && (
-                    <Badge variant="default" className="text-xs bg-blue-600">Active</Badge>
+                  {camera.status === "live" && (
+                    <Badge variant="default" className="text-xs bg-blue-600">Live</Badge>
+                  )}
+                  {camera.status === "no-signal" && (
+                    <Badge variant="destructive" className="text-xs">No Signal</Badge>
+                  )}
+                  {camera.status === "error" && (
+                    <Badge variant="destructive" className="text-xs">Error</Badge>
                   )}
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">{camera.rtsp_url}</p>
             </CardHeader>
             <CardContent>
-              <div className="aspect-video bg-muted rounded-lg flex items-center justify-center border border-border">
-                {camera.is_active ? (
+              <div className="aspect-video bg-muted rounded-lg flex items-center justify-center border border-border overflow-hidden">
+                {camera.snapshotUrl && camera.status === "live" ? (
+                  <img src={camera.snapshotUrl} alt="Camera Snapshot" className="object-cover w-full h-full" />
+                ) : camera.status === "error" ? (
                   <div className="text-center">
-                    <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-2">
-                      <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
-                    </div>
-                    <span className="text-xs text-muted-foreground">Live Feed</span>
+                    <WifiOff className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                    <span className="text-muted-foreground text-sm">Error</span>
                   </div>
                 ) : (
                   <div className="text-center">
