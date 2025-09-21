@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Plus, Edit, Trash2, Wifi, WifiOff } from "lucide-react"
 import { CameraDialog } from "./camera-dialog"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 
 const API_BASE: string = typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : "" // fallback to relative path
 
@@ -16,6 +17,7 @@ interface Camera {
   location?: string
   is_active: boolean
   video_info?: any
+  vehicle_tracking_enabled?: boolean
 }
 
 interface CameraWithStatus extends Camera {
@@ -124,39 +126,69 @@ export function CameraSection() {
     setDialogOpen(true)
   }
 
-  const handleEditCamera = (camera: Camera) => {
-    setEditingCamera(camera)
+  const handleEditCamera = async (camera: Camera) => {
+    try {
+      // Fetch the latest camera data from the API
+      console.log(`Fetching latest data for camera ${camera.id}`)
+      const res = await fetch(`${API_BASE}/api/v1/cameras/${camera.id}/`)
+      if (res.ok) {
+        const latestCamera = await res.json()
+        console.log(`Latest camera data:`, latestCamera)
+        setEditingCamera(latestCamera)
+      } else {
+        console.warn(`Failed to fetch latest camera data, using cached data`)
+        setEditingCamera(camera)
+      }
+    } catch (e) {
+      console.warn(`Error fetching latest camera data:`, e)
+      setEditingCamera(camera)
+    }
     setDialogOpen(true)
   }
 
   const handleSaveCamera = async (cameraData: Partial<Camera>) => {
+    console.log("handleSaveCamera called with:", cameraData)
     setLoading(true)
     setError(null)
     try {
       if (editingCamera) {
         // Update
         console.log("Update camera API URL:", `${API_BASE}/api/v1/cameras/${editingCamera.id}/`);
+        console.log("Update payload:", JSON.stringify(cameraData, null, 2))
         const res = await fetch(`${API_BASE}/api/v1/cameras/${editingCamera.id}/`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(cameraData),
         })
-        if (!res.ok) throw new Error("Failed to update camera")
+        if (!res.ok) {
+          const errorText = await res.text()
+          console.error("Update failed:", res.status, errorText)
+          throw new Error(`Failed to update camera: ${res.status} ${errorText}`)
+        }
+        console.log("Update successful")
       } else {
         // Create
         console.log("Create camera API URL:", `${API_BASE}/api/v1/cameras/`);
+        console.log("Create payload:", JSON.stringify(cameraData, null, 2))
         const res = await fetch(`${API_BASE}/api/v1/cameras/`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(cameraData),
         })
-        if (!res.ok) throw new Error("Failed to create camera")
+        if (!res.ok) {
+          const errorText = await res.text()
+          console.error("Create failed:", res.status, errorText)
+          throw new Error(`Failed to create camera: ${res.status} ${errorText}`)
+        }
+        const createResponse = await res.json()
+        console.log("Create successful, response:", createResponse)
       }
       // Refresh list
       console.log("Refresh cameras API URL:", `${API_BASE}/api/v1/cameras/`);
       const updated = await fetch(`${API_BASE}/api/v1/cameras/`).then((r) => r.json())
       setCameras(Array.isArray(updated) ? updated : [])
     } catch (e) {
+      console.error("Error in handleSaveCamera:", e)
       setError((e as Error).message)
     } finally {
       setLoading(false)
@@ -178,6 +210,83 @@ export function CameraSection() {
     }
   }
 
+  const handleToggleCameraActive = async (cameraId: number, isActive: boolean) => {
+    console.log(`Toggling camera ${cameraId} active status to: ${isActive}`)
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/cameras/${cameraId}/`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: isActive }),
+      })
+      if (!res.ok) {
+        const errorText = await res.text()
+        throw new Error(`Failed to update camera: ${res.status} ${errorText}`)
+      }
+      
+      // Update local state
+      setCameras((prev) =>
+        prev.map((c) => (c.id === cameraId ? { ...c, is_active: isActive } : c))
+      )
+      console.log(`✅ Camera ${cameraId} ${isActive ? 'activated' : 'deactivated'} successfully`)
+      
+      // Refresh camera list to get latest data
+      console.log("Refreshing camera list after toggle...")
+      const updated = await fetch(`${API_BASE}/api/v1/cameras/`).then((r) => r.json())
+      setCameras(Array.isArray(updated) ? updated.map((cam: Camera) => ({
+        ...cam,
+        snapshotUrl: undefined,
+        status: "no-signal",
+      })) : [])
+    } catch (e) {
+      console.error(`Error toggling camera ${cameraId}:`, e)
+      setError((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleToggleVehicleTracking = async (cameraId: number, enabled: boolean) => {
+    console.log(`Toggling vehicle tracking for camera ${cameraId} to: ${enabled}`)
+    setLoading(true)
+    setError(null)
+    try {
+      // Update camera in database
+      const res = await fetch(`${API_BASE}/api/v1/cameras/${cameraId}/`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vehicle_tracking_enabled: enabled }),
+      })
+      if (!res.ok) {
+        const errorText = await res.text()
+        throw new Error(`Failed to update camera: ${res.status} ${errorText}`)
+      }
+      
+      // Vehicle tracking will be handled by the backend camera update endpoint
+      // which automatically calls the AI service when vehicle_tracking_enabled changes
+      
+      // Update local state
+      setCameras((prev) =>
+        prev.map((c) => (c.id === cameraId ? { ...c, vehicle_tracking_enabled: enabled } : c))
+      )
+      
+      // Refresh camera list to get latest data
+      console.log("Refreshing camera list after vehicle tracking toggle...")
+      const updated = await fetch(`${API_BASE}/api/v1/cameras/`).then((r) => r.json())
+      setCameras(Array.isArray(updated) ? updated.map((cam: Camera) => ({
+        ...cam,
+        snapshotUrl: undefined,
+        status: "no-signal",
+      })) : [])
+    } catch (e) {
+      console.error(`Error toggling vehicle tracking for camera ${cameraId}:`, e)
+      setError((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <section>
       <div className="flex items-center justify-between mb-6">
@@ -191,17 +300,7 @@ export function CameraSection() {
           <div className="col-span-4 text-center text-muted-foreground">No cameras found.</div>
         )}
         {cameras.map((camera) => (
-          <Card key={camera.id} className="bg-card border-border relative group">
-            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-              <div className="flex space-x-1">
-                <Button size="sm" variant="ghost" className="h-8 w-8 p-0 hover:bg-muted" onClick={() => handleEditCamera(camera)}>
-                  <Edit className="w-4 h-4" />
-                </Button>
-                <Button size="sm" variant="ghost" className="h-8 w-8 p-0 hover:bg-destructive hover:text-destructive-foreground" onClick={() => deleteCamera(camera.id)}>
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
+          <Card key={camera.id} className="bg-card border-border relative">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium text-muted-foreground">{camera.location || camera.name}</CardTitle>
@@ -240,6 +339,56 @@ export function CameraSection() {
                     <span className="text-muted-foreground text-sm">No Signal</span>
                   </div>
                 )}
+              </div>
+              
+              {/* Status Information */}
+              <div className="mt-3 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Camera Status:</span>
+                  <div className="flex items-center space-x-2">
+                    <span className={`font-medium ${
+                      camera.is_active ? 'text-green-600' : 'text-gray-500'
+                    }`}>
+                      {camera.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                    <Switch 
+                      checked={camera.is_active} 
+                      onCheckedChange={(checked) => handleToggleCameraActive(camera.id, checked)}
+                      size="sm"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Vehicle Tracking:</span>
+                  <div className="flex items-center space-x-2">
+                    <span className={`font-medium ${
+                      camera.vehicle_tracking_enabled ? 'text-blue-600' : 'text-gray-500'
+                    }`}>
+                      {camera.vehicle_tracking_enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                    <Switch 
+                      checked={camera.vehicle_tracking_enabled || false} 
+                      onCheckedChange={(checked) => handleToggleVehicleTracking(camera.id, checked)}
+                      size="sm"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">LPR Status:</span>
+                  <span className="text-gray-500 font-medium">Coming Soon</span>
+                </div>
+              </div>
+              
+              {/* Action Buttons */}
+              <div className="flex space-x-2 mt-3">
+                <Button size="sm" variant="outline" className="flex-1" onClick={() => handleEditCamera(camera)}>
+                  <Edit className="w-4 h-4 mr-1" />
+                  Edit
+                </Button>
+                <Button size="sm" variant="destructive" className="flex-1" onClick={() => deleteCamera(camera.id)}>
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Delete
+                </Button>
               </div>
             </CardContent>
           </Card>

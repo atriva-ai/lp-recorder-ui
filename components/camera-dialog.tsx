@@ -10,12 +10,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 
 interface Camera {
-  id: string
-  position: "Front" | "Back" | "Left" | "Right"
-  isActive: boolean
-  cameraDevice?: string
-  rtspUrl?: string
-  aiRecognitionEnabled?: boolean
+  id: number
+  name: string
+  rtsp_url: string
+  location?: string
+  is_active: boolean
+  video_info?: any
+  vehicle_tracking_enabled?: boolean
 }
 
 interface CameraDialogProps {
@@ -39,35 +40,43 @@ export function CameraDialog({
   const [location, setLocation] = useState<string>("")
   const [rtspUrl, setRtspUrl] = useState<string>("")
   const [isActive, setIsActive] = useState<boolean>(true)
-  const [aiRecognitionEnabled, setAiRecognitionEnabled] = useState<boolean>(true)
+  const [aiRecognitionEnabled, setAiRecognitionEnabled] = useState<boolean>(false)
+  const [vehicleTrackingEnabled, setVehicleTrackingEnabled] = useState<boolean>(false)
 
   const positions = ["Front", "Back", "Left", "Right"]
-  const availablePositions = positions.filter((pos) => !usedPositions.includes(pos) || pos === camera?.position)
+  const availablePositions = positions.filter((pos) => !usedPositions.includes(pos) || pos === camera?.location)
 
   useEffect(() => {
     if (camera) {
       setName(camera.name || "")
-      setLocation(camera.position || "")
-      setRtspUrl(camera.rtspUrl || "")
-      setIsActive(camera.isActive ?? true)
-      setAiRecognitionEnabled(camera.aiRecognitionEnabled ?? true)
+      setLocation(camera.location || "")
+      setRtspUrl(camera.rtsp_url || "")
+      setIsActive(camera.is_active ?? true)
+      setAiRecognitionEnabled(false) // Always false for now (grayed out)
+      setVehicleTrackingEnabled(camera.vehicle_tracking_enabled ?? false)
     } else {
       setName("")
       setLocation("")
       setRtspUrl("")
       setIsActive(true)
-      setAiRecognitionEnabled(true)
+      setAiRecognitionEnabled(false)
+      setVehicleTrackingEnabled(false)
     }
   }, [camera, open])
 
   const handleSave = () => {
-    if (!name.trim() || !location) return
+    if (!name.trim() || !location) {
+      console.log("Validation failed:", { name: name.trim(), location })
+      return
+    }
     const cameraData = {
       name: name.trim(),
       location,
       rtsp_url: rtspUrl.trim() || undefined,
       is_active: isActive,
+      vehicle_tracking_enabled: vehicleTrackingEnabled,
     }
+    console.log("Saving camera data:", cameraData)
     onSave(cameraData)
     onOpenChange(false)
   }
@@ -142,15 +151,25 @@ export function CameraDialog({
             </div>
             <Switch id="is-active" checked={isActive} onCheckedChange={setIsActive} />
           </div>
-          {/* AI Recognition Toggle (unchanged) */}
+          {/* AI Vehicle Tracking Toggle */}
           <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <Label htmlFor="vehicle-tracking" className="text-sm font-medium text-foreground">
+                AI Vehicle Tracking
+              </Label>
+              <p className="text-xs text-muted-foreground">Enable vehicle tracking algorithm</p>
+            </div>
+            <Switch id="vehicle-tracking" checked={vehicleTrackingEnabled} onCheckedChange={setVehicleTrackingEnabled} />
+          </div>
+          {/* AI License Plate Recognition Toggle (grayed out by default) */}
+          <div className="flex items-center justify-between opacity-50">
             <div className="space-y-1">
               <Label htmlFor="ai-recognition" className="text-sm font-medium text-foreground">
                 AI License Plate Recognition
               </Label>
-              <p className="text-xs text-muted-foreground">Enable automatic license plate detection</p>
+              <p className="text-xs text-muted-foreground">Enable automatic license plate detection (Coming Soon)</p>
             </div>
-            <Switch id="ai-recognition" checked={aiRecognitionEnabled} onCheckedChange={setAiRecognitionEnabled} />
+            <Switch id="ai-recognition" checked={aiRecognitionEnabled} onCheckedChange={setAiRecognitionEnabled} disabled />
           </div>
         </div>
 
