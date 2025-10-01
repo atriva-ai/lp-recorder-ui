@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useState, useEffect, type ChangeEvent } from "react"
+import type { JSX } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,12 +10,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 
 interface Camera {
-  id: string
-  position: "Front" | "Back" | "Left" | "Right"
-  isActive: boolean
-  cameraDevice?: string
-  rtspUrl?: string
-  aiRecognitionEnabled?: boolean
+  id: number
+  name: string
+  rtsp_url: string
+  location?: string
+  is_active: boolean
+  video_info?: any
+  vehicle_tracking_enabled?: boolean
 }
 
 interface CameraDialogProps {
@@ -34,49 +36,47 @@ export function CameraDialog({
   usedPositions,
   availableCameras,
 }: CameraDialogProps) {
-  const [selectedPosition, setSelectedPosition] = useState<string>("")
-  const [selectedCamera, setSelectedCamera] = useState<string>("")
+  const [name, setName] = useState<string>("")
+  const [location, setLocation] = useState<string>("")
   const [rtspUrl, setRtspUrl] = useState<string>("")
-  const [aiRecognitionEnabled, setAiRecognitionEnabled] = useState<boolean>(true)
+  const [isActive, setIsActive] = useState<boolean>(true)
+  const [aiRecognitionEnabled, setAiRecognitionEnabled] = useState<boolean>(false)
+  const [vehicleTrackingEnabled, setVehicleTrackingEnabled] = useState<boolean>(false)
 
   const positions = ["Front", "Back", "Left", "Right"]
-  const availablePositions = positions.filter((pos) => !usedPositions.includes(pos) || pos === camera?.position)
-
-  // Filter out cameras that are already assigned to other positions
-  const unassignedCameras = availableCameras.filter((cam) => {
-    // If editing, allow the current camera to be selected
-    if (camera && camera.cameraDevice === cam) return true
-    // Otherwise, only show cameras not assigned to any position
-    return !availableCameras.some((assignedCam) => assignedCam === cam && assignedCam !== camera?.cameraDevice)
-  })
+  const availablePositions = positions.filter((pos) => !usedPositions.includes(pos) || pos === camera?.location)
 
   useEffect(() => {
     if (camera) {
-      // Editing existing camera
-      setSelectedPosition(camera.position)
-      setSelectedCamera(camera.cameraDevice || "")
-      setRtspUrl(camera.rtspUrl || "")
-      setAiRecognitionEnabled(camera.aiRecognitionEnabled ?? true)
+      setName(camera.name || "")
+      setLocation(camera.location || "")
+      setRtspUrl(camera.rtsp_url || "")
+      setIsActive(camera.is_active ?? true)
+      setAiRecognitionEnabled(false) // Always false for now (grayed out)
+      setVehicleTrackingEnabled(camera.vehicle_tracking_enabled ?? false)
     } else {
-      // Adding new camera
-      setSelectedPosition("")
-      setSelectedCamera("")
+      setName("")
+      setLocation("")
       setRtspUrl("")
-      setAiRecognitionEnabled(true)
+      setIsActive(true)
+      setAiRecognitionEnabled(false)
+      setVehicleTrackingEnabled(false)
     }
   }, [camera, open])
 
   const handleSave = () => {
-    if (!selectedPosition || !selectedCamera) return
-
-    const cameraData: Partial<Camera> = {
-      position: selectedPosition as Camera["position"],
-      cameraDevice: selectedCamera,
-      rtspUrl: rtspUrl.trim() || undefined,
-      aiRecognitionEnabled,
-      isActive: true,
+    if (!name.trim() || !location) {
+      console.log("Validation failed:", { name: name.trim(), location })
+      return
     }
-
+    const cameraData = {
+      name: name.trim(),
+      location,
+      rtsp_url: rtspUrl.trim() || undefined,
+      is_active: isActive,
+      vehicle_tracking_enabled: vehicleTrackingEnabled,
+    }
+    console.log("Saving camera data:", cameraData)
     onSave(cameraData)
     onOpenChange(false)
   }
@@ -93,14 +93,29 @@ export function CameraDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Position Selection */}
+          {/* Name Input */}
           <div className="space-y-2">
-            <Label htmlFor="position" className="text-sm font-medium text-foreground">
-              Camera Position
+            <Label htmlFor="name" className="text-sm font-medium text-foreground">
+              Name
             </Label>
-            <Select value={selectedPosition} onValueChange={setSelectedPosition}>
+            <Input
+              id="name"
+              type="text"
+              placeholder="Camera Name"
+              value={name}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
+              className="bg-background border-border text-foreground"
+              required
+            />
+          </div>
+          {/* Location Selection */}
+          <div className="space-y-2">
+            <Label htmlFor="location" className="text-sm font-medium text-foreground">
+              Location
+            </Label>
+            <Select value={location} onValueChange={setLocation}>
               <SelectTrigger className="bg-background border-border">
-                <SelectValue placeholder="Select position" />
+                <SelectValue placeholder="Select location" />
               </SelectTrigger>
               <SelectContent className="bg-background border-border">
                 {availablePositions.map((position) => (
@@ -111,26 +126,6 @@ export function CameraDialog({
               </SelectContent>
             </Select>
           </div>
-
-          {/* Camera Device Selection */}
-          <div className="space-y-2">
-            <Label htmlFor="camera" className="text-sm font-medium text-foreground">
-              Camera Device
-            </Label>
-            <Select value={selectedCamera} onValueChange={setSelectedCamera}>
-              <SelectTrigger className="bg-background border-border">
-                <SelectValue placeholder="Select camera device" />
-              </SelectTrigger>
-              <SelectContent className="bg-background border-border">
-                {unassignedCameras.map((cameraDevice) => (
-                  <SelectItem key={cameraDevice} value={cameraDevice}>
-                    {cameraDevice}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           {/* RTSP URL Input */}
           <div className="space-y-2">
             <Label htmlFor="rtsp" className="text-sm font-medium text-foreground">
@@ -141,21 +136,40 @@ export function CameraDialog({
               type="url"
               placeholder="rtsp://username:password@ip:port/stream"
               value={rtspUrl}
-              onChange={(e) => setRtspUrl(e.target.value)}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setRtspUrl(e.target.value)}
               className="bg-background border-border text-foreground"
             />
             <p className="text-xs text-muted-foreground">Optional: Enter RTSP stream URL for live video feed</p>
           </div>
-
-          {/* AI Recognition Toggle */}
+          {/* is_active Switch */}
           <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <Label htmlFor="is-active" className="text-sm font-medium text-foreground">
+                Active
+              </Label>
+              <p className="text-xs text-muted-foreground">Enable or disable this camera</p>
+            </div>
+            <Switch id="is-active" checked={isActive} onCheckedChange={setIsActive} />
+          </div>
+          {/* AI Vehicle Tracking Toggle */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <Label htmlFor="vehicle-tracking" className="text-sm font-medium text-foreground">
+                AI Vehicle Tracking
+              </Label>
+              <p className="text-xs text-muted-foreground">Enable vehicle tracking algorithm</p>
+            </div>
+            <Switch id="vehicle-tracking" checked={vehicleTrackingEnabled} onCheckedChange={setVehicleTrackingEnabled} />
+          </div>
+          {/* AI License Plate Recognition Toggle (grayed out by default) */}
+          <div className="flex items-center justify-between opacity-50">
             <div className="space-y-1">
               <Label htmlFor="ai-recognition" className="text-sm font-medium text-foreground">
                 AI License Plate Recognition
               </Label>
-              <p className="text-xs text-muted-foreground">Enable automatic license plate detection</p>
+              <p className="text-xs text-muted-foreground">Enable automatic license plate detection (Coming Soon)</p>
             </div>
-            <Switch id="ai-recognition" checked={aiRecognitionEnabled} onCheckedChange={setAiRecognitionEnabled} />
+            <Switch id="ai-recognition" checked={aiRecognitionEnabled} onCheckedChange={setAiRecognitionEnabled} disabled />
           </div>
         </div>
 
@@ -165,7 +179,7 @@ export function CameraDialog({
           </Button>
           <Button
             onClick={handleSave}
-            disabled={!selectedPosition || !selectedCamera}
+            disabled={!name.trim() || !location}
             className="bg-blue-600 hover:bg-blue-700"
           >
             {camera ? "Update Camera" : "Add Camera"}
