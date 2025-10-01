@@ -6,8 +6,10 @@ import { ThemeToggle } from "./theme-toggle"
 
 export function Header() {
   const [currentTime, setCurrentTime] = useState(new Date())
+  const [isMounted, setIsMounted] = useState(false)
 
   useEffect(() => {
+    setIsMounted(true)
     const timer = setInterval(() => {
       setCurrentTime(new Date())
     }, 1000)
@@ -41,7 +43,9 @@ export function Header() {
 
         <div className="flex items-center space-x-4">
           <div className="text-right">
-            <div className="text-sm font-mono text-blue-500">{formatDateTime(currentTime)}</div>
+            {isMounted && (
+              <div className="text-sm font-mono text-blue-500">{formatDateTime(currentTime)}</div>
+            )}
           </div>
           <ThemeToggle />
         </div>
