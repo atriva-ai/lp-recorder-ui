@@ -211,7 +211,10 @@ export function CameraSection() {
   }
 
   const handleToggleCameraActive = async (cameraId: number, isActive: boolean) => {
-    console.log(`Toggling camera ${cameraId} active status to: ${isActive}`)
+    console.log(`🔄 FRONTEND: Toggling camera ${cameraId} active status to: ${isActive}`)
+    console.log(`🔄 FRONTEND: API URL: ${API_BASE}/api/v1/cameras/${cameraId}/`)
+    console.log(`🔄 FRONTEND: Request body:`, JSON.stringify({ is_active: isActive }))
+    
     setLoading(true)
     setError(null)
     try {
@@ -220,10 +223,18 @@ export function CameraSection() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_active: isActive }),
       })
+      
+      console.log(`🔄 FRONTEND: Response status: ${res.status}`)
+      console.log(`🔄 FRONTEND: Response ok: ${res.ok}`)
+      
       if (!res.ok) {
         const errorText = await res.text()
+        console.error(`❌ FRONTEND: Error response: ${errorText}`)
         throw new Error(`Failed to update camera: ${res.status} ${errorText}`)
       }
+      
+      const responseData = await res.json()
+      console.log(`✅ FRONTEND: Response data:`, responseData)
       
       // Update local state
       setCameras((prev) =>
@@ -353,7 +364,10 @@ export function CameraSection() {
                     </span>
                     <Switch 
                       checked={camera.is_active} 
-                      onCheckedChange={(checked) => handleToggleCameraActive(camera.id, checked)}
+                      onCheckedChange={(checked) => {
+                        console.log(`🎛️ FRONTEND: Switch clicked for camera ${camera.id}, new value: ${checked}`)
+                        handleToggleCameraActive(camera.id, checked)
+                      }}
                       size="sm"
                     />
                   </div>
@@ -399,8 +413,6 @@ export function CameraSection() {
         onOpenChange={setDialogOpen}
         camera={editingCamera}
         onSave={handleSaveCamera}
-        usedPositions={[]}
-        availableCameras={[]}
       />
     </section>
   )

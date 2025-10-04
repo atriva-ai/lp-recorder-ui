@@ -6,7 +6,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 
 interface Camera {
@@ -24,8 +23,6 @@ interface CameraDialogProps {
   onOpenChange: (open: boolean) => void
   camera?: Camera | null
   onSave: (cameraData: Partial<Camera>) => void
-  usedPositions: string[]
-  availableCameras: string[]
 }
 
 export function CameraDialog({
@@ -33,8 +30,6 @@ export function CameraDialog({
   onOpenChange,
   camera,
   onSave,
-  usedPositions,
-  availableCameras,
 }: CameraDialogProps) {
   const [name, setName] = useState<string>("")
   const [location, setLocation] = useState<string>("")
@@ -43,8 +38,6 @@ export function CameraDialog({
   const [aiRecognitionEnabled, setAiRecognitionEnabled] = useState<boolean>(false)
   const [vehicleTrackingEnabled, setVehicleTrackingEnabled] = useState<boolean>(false)
 
-  const positions = ["Front", "Back", "Left", "Right"]
-  const availablePositions = positions.filter((pos) => !usedPositions.includes(pos) || pos === camera?.location)
 
   useEffect(() => {
     if (camera) {
@@ -65,14 +58,14 @@ export function CameraDialog({
   }, [camera, open])
 
   const handleSave = () => {
-    if (!name.trim() || !location) {
-      console.log("Validation failed:", { name: name.trim(), location })
+    if (!name.trim() || !rtspUrl.trim()) {
+      console.log("Validation failed:", { name: name.trim(), rtspUrl: rtspUrl.trim() })
       return
     }
     const cameraData = {
       name: name.trim(),
-      location,
-      rtsp_url: rtspUrl.trim() || undefined,
+      location: location || undefined,
+      rtsp_url: rtspUrl.trim(),
       is_active: isActive,
       vehicle_tracking_enabled: vehicleTrackingEnabled,
     }
@@ -93,43 +86,41 @@ export function CameraDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Name Input */}
+          {/* Camera Name Input - Required */}
           <div className="space-y-2">
             <Label htmlFor="name" className="text-sm font-medium text-foreground">
-              Name
+              Camera Name <span className="text-red-500">*</span>
             </Label>
             <Input
               id="name"
               type="text"
-              placeholder="Camera Name"
+              placeholder="Enter camera name"
               value={name}
               onChange={(e: ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
               className="bg-background border-border text-foreground"
               required
             />
           </div>
-          {/* Location Selection */}
+          
+          {/* Camera Location Input - Optional */}
           <div className="space-y-2">
             <Label htmlFor="location" className="text-sm font-medium text-foreground">
-              Location
+              Camera Location
             </Label>
-            <Select value={location} onValueChange={setLocation}>
-              <SelectTrigger className="bg-background border-border">
-                <SelectValue placeholder="Select location" />
-              </SelectTrigger>
-              <SelectContent className="bg-background border-border">
-                {availablePositions.map((position) => (
-                  <SelectItem key={position} value={position}>
-                    {position}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Input
+              id="location"
+              type="text"
+              placeholder="Enter camera location (optional)"
+              value={location}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setLocation(e.target.value)}
+              className="bg-background border-border text-foreground"
+            />
           </div>
-          {/* RTSP URL Input */}
+          
+          {/* RTSP URL Input - Required */}
           <div className="space-y-2">
             <Label htmlFor="rtsp" className="text-sm font-medium text-foreground">
-              RTSP Stream URL
+              RTSP Stream URL <span className="text-red-500">*</span>
             </Label>
             <Input
               id="rtsp"
@@ -138,8 +129,9 @@ export function CameraDialog({
               value={rtspUrl}
               onChange={(e: ChangeEvent<HTMLInputElement>) => setRtspUrl(e.target.value)}
               className="bg-background border-border text-foreground"
+              required
             />
-            <p className="text-xs text-muted-foreground">Optional: Enter RTSP stream URL for live video feed</p>
+            <p className="text-xs text-muted-foreground">Enter RTSP stream URL for live video feed</p>
           </div>
           {/* is_active Switch */}
           <div className="flex items-center justify-between">
@@ -179,7 +171,7 @@ export function CameraDialog({
           </Button>
           <Button
             onClick={handleSave}
-            disabled={!name.trim() || !location}
+            disabled={!name.trim() || !rtspUrl.trim()}
             className="bg-blue-600 hover:bg-blue-700"
           >
             {camera ? "Update Camera" : "Add Camera"}
