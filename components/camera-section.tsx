@@ -10,6 +10,10 @@ import { Switch } from "@/components/ui/switch"
 
 const API_BASE: string = typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : "" // fallback to relative path
 
+// Debug: Log the API_BASE value
+console.log("🔍 API_BASE value:", API_BASE)
+console.log("🔍 process.env.NEXT_PUBLIC_API_URL:", typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_API_URL : 'undefined')
+
 interface Camera {
   id: number
   name: string
@@ -49,23 +53,33 @@ export function CameraSection() {
         return res.json()
       })
       .then((data) => {
+        console.log("🔍 FRONTEND: Received camera data:", data)
         // Initialize status and snapshotUrl for each camera
         setCameras(
-          (Array.isArray(data) ? data : []).map((cam: Camera) => ({
-            ...cam,
-            snapshotUrl: undefined,
-            status: "no-signal",
-          }))
+          (Array.isArray(data) ? data : []).map((cam: Camera) => {
+            console.log(`🔍 FRONTEND: Camera ${cam.id} is_active: ${cam.is_active}`)
+            return {
+              ...cam,
+              snapshotUrl: undefined,
+              status: "no-signal",
+            }
+          })
         )
       })
       .catch((e) => setError("Failed to load cameras: " + (e?.message || e)))
       .finally(() => setLoading(false))
   }, [])
 
-  // Periodically fetch snapshot and status for each camera
+  // Periodically fetch snapshot and status for ACTIVE cameras only
   useEffect(() => {
     const interval = setInterval(() => {
       cameras.forEach((camera: CameraWithStatus) => {
+        // Only poll if camera is active
+        if (!camera.is_active) {
+          console.debug(`Skipping polling for inactive camera ${camera.id}`)
+          return
+        }
+        
         // Fetch decode status
         console.debug("Decode status API URL:", `${API_BASE}/api/v1/cameras/${camera.id}/decode-status/`)
         fetch(`${API_BASE}/api/v1/cameras/${camera.id}/decode-status/`)
@@ -365,7 +379,10 @@ export function CameraSection() {
                     <Switch 
                       checked={camera.is_active} 
                       onCheckedChange={(checked) => {
-                        console.log(`🎛️ FRONTEND: Switch clicked for camera ${camera.id}, new value: ${checked}`)
+                        console.log(`🎛️ FRONTEND: Switch clicked for camera ${camera.id}`)
+                        console.log(`🎛️ FRONTEND: Current is_active: ${camera.is_active}`)
+                        console.log(`🎛️ FRONTEND: New value: ${checked}`)
+                        console.log(`🎛️ FRONTEND: Will send to backend: ${checked}`)
                         handleToggleCameraActive(camera.id, checked)
                       }}
                       size="sm"
